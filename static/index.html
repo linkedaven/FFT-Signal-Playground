@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FFT Signal Playground</title>
+<style>
+:root{--bg:#1e1e1e;--panel:#2b2b2b;--text:#e0e0e0;--muted:#9a9a9a;--grid:#444;--a1:#54a0ff;--a2:#ff9f43;--a3:#1dd1a1;--btn:#3a3a3a;--btnh:#505050}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
+main{margin:0 auto}
+h1{font-size:22px;margin:4px 0 2px;font-weight:600;text-align:center}
+.sub{text-align:center;color:var(--muted);margin:0 0 16px;font-size:13px}
+.card{background:var(--panel);border:1px solid var(--grid);border-radius:8px;padding:14px;margin-bottom:14px}
+.card h2{font-size:13px;font-weight:600;margin:0 0 8px;color:var(--text)}
+.muted{color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px 18px}
+.ctl{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);min-width:0}
+.ctl b{color:var(--text);font-weight:600}
+.ctl[hidden],.row[hidden]{display:none}
+select,input[type=text]{background:var(--bg);color:var(--text);border:1px solid var(--grid);border-radius:6px;padding:7px 8px;font:inherit;width:100%}
+input[type=range]{width:100%;accent-color:var(--a3)}
+select:focus,input:focus-visible,button:focus-visible,canvas:focus-visible{outline:2px solid var(--a1);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+button{background:var(--btn);color:var(--text);border:1px solid var(--grid);border-radius:6px;padding:7px 16px;font:inherit;cursor:pointer}
+button:hover:not(:disabled){background:var(--btnh)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.on{border-color:var(--a3);background:#1b4a3d}
+.chips{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;color:var(--muted)}
+.chips b{color:var(--text);font-weight:600}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin:0 0 6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.plot{position:relative}
+canvas{display:block;touch-action:none}
+.plot canvas{position:absolute;inset:0;width:100%;height:100%}
+
+/* dashboard layout: controls on the left, the three plots fill the window height on the right */
+main{max-width:none;padding:10px 14px 28px}
+.top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:0 0 8px}
+.top h1{margin:0;text-align:left;font-size:19px}
+.top .sub{margin:0;text-align:left}
+.layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:12px;align-items:start}
+.side{position:sticky;top:10px;max-height:calc(100vh - 60px);overflow-y:auto;padding-right:2px}
+.side .card{padding:11px;margin-bottom:10px}
+.side .grid{grid-template-columns:1fr 1fr;gap:10px 12px}
+.side select,.side input[type=text]{padding:5px 6px}
+.side button{padding:6px 12px}
+.plots{height:calc(100vh - 60px);min-height:600px;display:grid;grid-template-rows:minmax(0,1fr) minmax(0,1.25fr) minmax(0,1fr);gap:10px}
+.plots .card{margin:0;padding:8px 12px 6px;min-height:0}
+.plotcard{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto minmax(0,1fr);column-gap:14px}
+.plotcard>h2{grid-row:1;margin:0 0 4px}
+.plotcard>.legend{grid-row:1;margin:0 0 4px;justify-self:end;align-self:center}
+.plotcard>.plot{grid-column:1/-1;grid-row:2;min-height:0}
+@media(max-width:980px){
+  .layout{display:block}
+  .side{position:static;max-height:none;overflow:visible}
+  .plots{height:auto;display:block;min-height:0}
+  .plots .card{margin-bottom:12px}
+  .plotcard>.plot{height:240px}
+}
+.tip{position:absolute;pointer-events:none;background:#111;border:1px solid var(--grid);border-radius:6px;padding:5px 8px;font-size:12px;line-height:1.4;white-space:nowrap;display:none;z-index:2}
+.note{font-size:12px;color:var(--a2);min-height:18px;margin-top:6px}
+.err{color:#ff6b6b}
+table{border-collapse:collapse;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:4px 10px;border-bottom:1px solid var(--grid)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:500}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+@media(max-width:700px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<header class="top"><h1>FFT Signal Playground</h1>
+<p class="sub">Build or draw a signal, look at its spectrum, and filter it live</p></header>
+<div class="layout">
+<aside class="side">
+
+<div class="card">
+  <h2>Signal</h2>
+  <div class="grid">
+    <label class="ctl">Source
+      <select id="src">
+        <option value="sine">Sine</option>
+        <option value="two_tone" selected>Two tones</option>
+        <option value="square">Square wave</option>
+        <option value="triangle">Triangle wave</option>
+        <option value="sawtooth">Sawtooth wave</option>
+        <option value="chirp">Chirp (sweep)</option>
+        <option value="am">AM signal</option>
+        <option value="morse">Morse code tone</option>
+        <option value="expr">Type expression</option>
+        <option value="draw">Draw (mouse)</option>
+      </select></label>
+    <label class="ctl" id="fsw">Sample rate
+      <select id="fs">
+        <option>1000</option><option>2000</option><option>4000</option><option selected>8000</option>
+        <option>16000</option><option>22050</option><option>44100</option><option>48000</option>
+      </select></label>
+    <label class="ctl">Samples N
+      <select id="n"><option>512</option><option>1024</option><option>2048</option><option selected>4096</option><option>8192</option><option>16384</option></select></label>
+    <label class="ctl" id="freqw">Frequency: <b><span id="freqv">500</span> Hz</b>
+      <input type="range" id="freq" min="0" max="1000" value="600"></label>
+    <label class="ctl" id="noisew">Noise: <b><span id="noisev">0.00</span></b>
+      <input type="range" id="noise" min="0" max="100" value="0"></label>
+    <label class="ctl" id="textw" hidden>Morse text
+      <input type="text" id="text" value="SOS" maxlength="30"></label>
+    <label class="ctl" id="wpmw" hidden>Speed: <b><span id="wpmv">20</span> WPM</b>
+      <input type="range" id="wpm" min="5" max="40" value="20"></label>
+    <label class="ctl" id="exprw" hidden style="grid-column:1/-1">Expression in <b>t</b> (seconds) &mdash; sin cos tan abs sqrt exp log sign floor min max pi e, use ^ for powers
+      <input type="text" id="expr" value="sin(2*pi*200*t) + 0.5*sin(2*pi*1300*t)" spellcheck="false"></label>
+  </div>
+  <div class="row" id="drawrow" hidden>
+    <button id="clear" type="button">Clear</button>
+    <button id="keep" type="button">Start from current signal</button>
+    <span class="muted">Click and drag on the time plot to draw one value per sample.</span>
+  </div>
+  <div class="note" id="alias" role="status"></div>
+</div>
+
+<div class="card">
+  <h2>Analysis and filter</h2>
+  <div class="grid">
+    <label class="ctl">Window
+      <select id="win"><option value="rectangular">Rectangular</option><option value="hann" selected>Hann</option><option value="hamming">Hamming</option><option value="blackman">Blackman</option></select></label>
+    <label class="ctl">Filter
+      <select id="ft"><option value="none">None</option><option value="lowpass" selected>Low-pass</option><option value="highpass">High-pass</option><option value="bandpass">Band-pass</option><option value="bandstop">Band-stop (notch)</option></select></label>
+    <label class="ctl" id="fcw">Cutoff: <b><span id="fcv">900</span> Hz</b>
+      <input type="range" id="fc" min="0" max="1000" value="600"></label>
+    <label class="ctl" id="fc2w" hidden>Upper cutoff: <b><span id="fc2v">1800</span> Hz</b>
+      <input type="range" id="fc2" min="0" max="1000" value="720"></label>
+    <label class="ctl" id="ordw">Order: <b><span id="ordv">4</span></b>
+      <input type="range" id="ord" min="1" max="10" value="4"></label>
+    <label class="ctl">Time plot shows
+      <select id="tv"><option value="0">Whole signal</option><option value="100">First 100 ms</option><option value="20" selected>First 20 ms</option><option value="5">First 5 ms</option></select></label>
+    <label class="ctl">Spectrum axes
+      <select id="axes"><option value="db" selected>dB, linear frequency</option><option value="dblog">dB, log frequency</option><option value="lin">Linear amplitude</option></select></label>
+  </div>
+  <div class="row">
+    <button id="playo" type="button">&#9654; Play original</button>
+    <button id="playf" type="button">&#9654; Play filtered</button>
+    <span class="chips" id="chips"></span>
+  </div>
+  <div class="note err" id="err" role="alert"></div>
+</div>
+
+</aside>
+<section class="plots">
+<div class="card plotcard">
+  <h2>Time domain</h2>
+  <div class="legend"><span><i style="background:var(--a1)"></i>Original</span><span id="lgf"><i style="background:var(--a2)"></i>Filtered</span></div>
+  <div class="plot"><canvas id="tc" tabindex="0" aria-label="Time domain plot"></canvas><div class="tip" id="tt"></div></div>
+</div>
+
+<div class="card plotcard">
+  <h2>Spectrum</h2>
+  <div class="legend"><span><i style="background:var(--a1)"></i>Original</span><span id="lgf2"><i style="background:var(--a2)"></i>Filtered</span><span id="lgr"><i style="background:#9a9a9a;height:0;border-top:2px dashed #9a9a9a"></i><span id="lgrt">Filter response</span></span></div>
+  <div class="plot"><canvas id="sc" aria-label="Amplitude spectrum"></canvas><div class="tip" id="st"></div></div>
+</div>
+
+<div class="card plotcard">
+  <h2>Spectrogram of the output <span class="muted" style="font-weight:400">(dB re amplitude 1)</span></h2>
+  <div class="plot"><canvas id="gc" aria-label="Spectrogram"></canvas></div>
+</div>
+
+</section>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>Strongest peaks</h2>
+  <div class="two">
+    <table id="pin"></table>
+    <table id="pout"></table>
+  </div>
+</div>
+
+<div class="card muted" style="font-size:12px">
+  The spectrum is the single-sided amplitude spectrum, scaled so a sine of amplitude A peaks at A for every window.
+  Peak frequencies use parabolic interpolation between bins. Filters are zero-phase Butterworth-shaped magnitude
+  responses applied in the frequency domain on a zero-padded copy, so the output has no phase shift.
+</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const C = {bg:'#1e1e1e', panel:'#2b2b2b', text:'#e0e0e0', muted:'#9a9a9a', grid:'#444', a1:'#54a0ff', a2:'#ff9f43'};
+const M = {l:54, r:14, t:10, b:34};
+
+const S = { x:new Float64Array(0), res:null, drawn:null, fs:8000, n:4096, fcHz:900, fc2Hz:1800, freqHz:500,
+            hoverT:null, hoverS:null, audio:null };
+
+/* ---------- helpers ---------- */
+function logMap(pos, lo, hi){ return lo * Math.pow(hi/lo, pos/1000); }
+function logInv(v, lo, hi){ return 1000 * Math.log(v/lo) / Math.log(hi/lo); }
+function fmtHz(f){ return f >= 1000 ? (f/1000).toFixed(f>=10000?1:2).replace(/\.?0+$/,'') + ' k' : (f<10?f.toFixed(1):f.toFixed(0)); }
+function fmtT(s){ return s >= 1 ? s.toFixed(2)+' s' : (s*1000).toFixed(s<0.01?1:0)+' ms'; }
+function niceTicks(lo, hi, n){
+  const span = hi - lo || 1, raw = span / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1,2,5,10].map(m => m*p).find(s => s >= raw) || 10*p;
+  const out = []; for (let v = Math.ceil(lo/step - 1e-9)*step; v <= hi + 1e-9; v += step) out.push(+v.toPrecision(10));
+  return out;
+}
+function setup(cv){
+  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  cv.width = Math.round(r.width*d); cv.height = Math.round(r.height*d);
+  const g = cv.getContext('2d'); g.setTransform(d,0,0,d,0,0);
+  g.fillStyle = C.panel; g.fillRect(0,0,r.width,r.height);
+  g.font = '11px system-ui,sans-serif';
+  return {g, w:r.width, h:r.height};
+}
+function axes(g, w, h, xt, yt, X, Y, xlabel, ylabel){
+  g.strokeStyle = C.grid; g.lineWidth = 1; g.fillStyle = C.muted;
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const v of yt){ const y = Math.round(Y(v)) + .5; g.beginPath(); g.moveTo(M.l,y); g.lineTo(w-M.r,y); g.stroke(); g.fillText(v.toString(), M.l-6, y); }
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  for (const [v,lab] of xt){ const x = Math.round(X(v)) + .5; g.beginPath(); g.moveTo(x,M.t); g.lineTo(x,h-M.b); g.globalAlpha=.4; g.stroke(); g.globalAlpha=1; const hw = g.measureText(lab).width/2; g.fillText(lab, Math.min(x, w-2-hw), h-M.b+5); }
+  g.fillStyle = C.muted; g.textAlign='center'; g.fillText(xlabel, (M.l+w-M.r)/2, h-14);
+  g.save(); g.translate(12,(M.t+h-M.b)/2); g.rotate(-Math.PI/2); g.textBaseline='middle'; g.fillText(ylabel,0,0); g.restore();
+}
+function polyline(g, pts, color, width, dash){
+  if (!pts.length) return; g.beginPath(); pts.forEach(([x,y],i) => i ? g.lineTo(x,y) : g.moveTo(x,y));
+  g.strokeStyle = color; g.lineWidth = width; g.setLineDash(dash || []); g.lineJoin = 'round'; g.stroke(); g.setLineDash([]);
+}
+/* min/max envelope per pixel column when there are more samples than pixels */
+function envelope(vals, X, Y, w){
+  const n = vals.length, pts = [];
+  const cols = Math.max(1, Math.floor(w - M.l - M.r));
+  if (n <= cols*2){ for (let i=0;i<n;i++) pts.push([X(i), Y(vals[i])]); return pts; }
+  for (let c=0;c<cols;c++){
+    const a = Math.floor(c*n/cols), b = Math.max(a+1, Math.floor((c+1)*n/cols));
+    let lo=Infinity, hi=-Infinity; for (let i=a;i<b;i++){ const v=vals[i]; if(v<lo)lo=v; if(v>hi)hi=v; }
+    const x = M.l + c + .5; pts.push([x,Y(hi)],[x,Y(lo)]);
+  }
+  return pts;
+}
+
+/* ---------- time plot ---------- */
+function viewN(){ const ms = +$('tv').value, n = S.x.length || S.n; return ms ? Math.max(8, Math.min(n, Math.round(ms*S.fs/1000))) : n; }
+function timeRange(){
+  let m = 1.2; const y = S.res && S.res.y, V = viewN();
+  for (let i=0;i<V;i++) m = Math.max(m, Math.abs(S.x[i])*1.1);
+  if (y && ft()!=='none') for (let i=0;i<V;i++) m = Math.max(m, Math.abs(y[i])*1.1);
+  return +m.toPrecision(2);
+}
+function drawTime(){
+  const {g,w,h} = setup($('tc')); const n = viewN(); if (!S.x.length) return;
+  const T = n / S.fs, ym = timeRange();
+  const X = i => M.l + (i/(n-1)) * (w-M.l-M.r), Y = v => M.t + (1 - (v+ym)/(2*ym)) * (h-M.t-M.b);
+  const xt = niceTicks(0, T, 6).map(v => [v/T*(n-1), fmtT(v)]);
+  axes(g,w,h,xt,niceTicks(-ym,ym,4),X,Y,'Time','Amplitude');
+  g.save(); g.beginPath(); g.rect(M.l,M.t,w-M.l-M.r,h-M.t-M.b); g.clip();
+  polyline(g, envelope(S.x.subarray(0,n),X,Y,w), C.a1, 1.6);
+  if (S.res && ft() !== 'none') polyline(g, envelope(S.res.y.slice(0,n),X,Y,w), C.a2, 1.6);
+  if (S.hoverT !== null){ const x = X(S.hoverT); g.strokeStyle='#888'; g.lineWidth=1; g.beginPath(); g.moveTo(x,M.t); g.lineTo(x,h-M.b); g.stroke(); }
+  g.restore();
+}
+
+/* ---------- spectrum plot ---------- */
+function spectrumGeom(w,h){
+  const mode = $('axes').value, r = S.res, nyq = r.nyquist_hz, df = r.resolution_hz;
+  const log = mode === 'dblog', db = mode !== 'lin';
+  const fLo = log ? Math.max(df, 1) : 0, fHi = nyq;
+  const X = log ? f => M.l + (Math.log(Math.max(f,fLo)/fLo)/Math.log(fHi/fLo))*(w-M.l-M.r)
+                : f => M.l + (f/fHi)*(w-M.l-M.r);
+  let yLo, yHi, mx = 0;
+  for (const a of r.amp_in) mx = Math.max(mx,a); for (const a of r.amp_out) mx = Math.max(mx,a);
+  if (db){ yHi = Math.ceil((20*Math.log10(Math.max(mx,1e-6)) + 3)/10)*10; yLo = yHi - 100; }
+  else { yLo = 0; yHi = mx*1.1 || 1; }
+  const Y = v => M.t + (1 - (v-yLo)/(yHi-yLo)) * (h-M.t-M.b);
+  return {mode, log, db, X, Y, yLo, yHi, fLo, fHi, nyq};
+}
+const toDb = a => Math.max(20*Math.log10(Math.max(a,1e-9)), -200);
+function specPts(freqs, amp, G){
+  const buckets = new Map();
+  for (let i = G.log?1:0; i < freqs.length; i++){
+    const px = Math.round(G.X(freqs[i])); const v = G.db ? toDb(amp[i]) : amp[i];
+    const cur = buckets.get(px); if (cur === undefined || v > cur) buckets.set(px, v);
+  }
+  return [...buckets.entries()].sort((a,b)=>a[0]-b[0]).map(([px,v]) => [px+.5, G.Y(Math.max(v, G.yLo))]);
+}
+function drawSpectrum(){
+  if (!S.res) return; const {g,w,h} = setup($('sc')), r = S.res, G = spectrumGeom(w,h);
+  const xt = (G.log ? [10,20,50,100,200,500,1000,2000,5000,10000,20000].filter(f => f>=G.fLo && f<=G.fHi)
+                    : niceTicks(0,G.fHi,7)).map(f => [f, fmtHz(f)]);
+  const yt = G.db ? niceTicks(G.yLo,G.yHi,5) : niceTicks(G.yLo,G.yHi,5);
+  axes(g,w,h,xt,yt,G.X,G.Y,'Frequency (Hz)', G.db ? 'Amplitude (dB re 1)' : 'Amplitude');
+  g.save(); g.beginPath(); g.rect(M.l,M.t,w-M.l-M.r,h-M.t-M.b); g.clip();
+  const pin = specPts(r.freqs, r.amp_in, G);
+  // faint fill under the original spectrum
+  if (pin.length){ g.beginPath(); g.moveTo(pin[0][0], G.Y(G.yLo)); pin.forEach(p => g.lineTo(p[0],p[1])); g.lineTo(pin[pin.length-1][0], G.Y(G.yLo)); g.closePath(); g.fillStyle = 'rgba(84,160,255,.14)'; g.fill(); }
+  if (r.response){
+    const pr = []; const rs = r.response;
+    const rp = new Map();
+    for (let i = G.log?1:0; i < r.freqs.length; i++){
+      const px = Math.round(G.X(r.freqs[i])); const v = G.db ? toDb(rs[i]) : rs[i]*G.yHi*0.95;
+      rp.set(px, v);
+    }
+    [...rp.entries()].sort((a,b)=>a[0]-b[0]).forEach(([px,v]) => pr.push([px+.5, G.Y(Math.max(v,G.yLo))]));
+    polyline(g, pr, '#9a9a9a', 1.4, [6,4]);
+  }
+  polyline(g, pin, C.a1, 1.6);
+  if (r.response) polyline(g, specPts(r.freqs, r.amp_out, G), C.a2, 1.6);
+  if (S.hoverS !== null){ const x = G.X(r.freqs[S.hoverS]); g.strokeStyle='#888'; g.lineWidth=1; g.beginPath(); g.moveTo(x,M.t); g.lineTo(x,h-M.b); g.stroke(); }
+  g.restore();
+}
+
+/* ---------- spectrogram ---------- */
+const STOPS = [[0,[30,30,30]],[.35,[28,52,96]],[.7,[84,160,255]],[1,[235,246,255]]];
+function cmap(t){
+  t = Math.min(1,Math.max(0,t)); let i = 1; while (i < STOPS.length-1 && t > STOPS[i][0]) i++;
+  const [t0,c0] = STOPS[i-1], [t1,c1] = STOPS[i], u = (t-t0)/(t1-t0);
+  return `rgb(${[0,1,2].map(k => Math.round(c0[k]+(c1[k]-c0[k])*u)).join(',')})`;
+}
+function drawSpectrogram(){
+  const {g,w,h} = setup($('gc')); const sg = S.res && S.res.spectrogram; if (!sg || !sg.db.length) return;
+  const cbW = 16, gap = 46, right = M.r + cbW + gap, nyq = S.res.nyquist_hz, T = S.x.length / S.fs;
+  const X = t => M.l + (t/T)*(w-M.l-right), Y = f => M.t + (1 - f/nyq)*(h-M.t-M.b);
+  const nt = sg.t.length, nf = sg.f.length, floor = sg.floor_db;
+  for (let i=0;i<nt;i++){
+    const x0 = X(i ? (sg.t[i-1]+sg.t[i])/2 : 0), x1 = X(i<nt-1 ? (sg.t[i]+sg.t[i+1])/2 : T);
+    for (let j=0;j<nf;j++){
+      const y1 = Y(sg.f[j]), y0 = Y(j<nf-1 ? sg.f[j+1] : nyq);
+      g.fillStyle = cmap((sg.db[i][j]-floor)/(-floor)); g.fillRect(x0, y0, x1-x0+.6, y1-y0+.6);
+    }
+  }
+  g.strokeStyle = C.grid; g.strokeRect(M.l+.5, M.t+.5, w-M.l-right, h-M.t-M.b);
+  g.fillStyle = C.muted; g.textAlign='center'; g.textBaseline='top';
+  for (const v of niceTicks(0,T,6)) g.fillText(fmtT(v), X(v), h-M.b+5);
+  g.fillText('Time', (M.l+w-right)/2, h-14);
+  g.textAlign='right'; g.textBaseline='middle';
+  for (const f of niceTicks(0,nyq,4)) if (f > 0) g.fillText(fmtHz(f), M.l-6, Y(f));
+  g.save(); g.translate(12,(M.t+h-M.b)/2); g.rotate(-Math.PI/2); g.fillText('Frequency (Hz)',0,0); g.restore();
+  // colour bar
+  const cx = w-M.r-cbW-gap+10, ch = h-M.t-M.b;
+  for (let k=0;k<ch;k++){ g.fillStyle = cmap(1-k/ch); g.fillRect(cx, M.t+k, cbW, 1.5); }
+  g.fillStyle = C.muted; g.textAlign='left';
+  for (const d of [0,-20,-40,-60,-80]){ const y = M.t + (d/floor)*ch; g.textBaseline='middle'; g.fillText(d+' dB', cx+cbW+4, y); }
+}
+
+/* ---------- tables, chips, notes ---------- */
+function peakTable(el, title, peaks){
+  el.innerHTML = `<tr><th>${title}</th><th>Frequency</th><th>Amplitude</th></tr>` +
+    (peaks.length ? peaks.map((p,i) => `<tr><td>#${i+1}</td><td>${p.freq.toFixed(1)} Hz</td><td>${p.amp.toFixed(3)} (${toDb(p.amp).toFixed(1)} dB)</td></tr>`).join('') : '<tr><td colspan="3" class="muted">no peaks</td></tr>');
+}
+function updateInfo(){
+  const r = S.res; if (!r) return;
+  $('chips').innerHTML = `<span>Resolution <b>${r.resolution_hz.toFixed(2)} Hz</b></span><span>Nyquist <b>${fmtHz(r.nyquist_hz)} Hz</b></span><span>Duration <b>${fmtT(S.x.length/S.fs)}</b></span><span>RMS <b>${r.rms_in.toFixed(3)}</b>${ft()!=='none' ? ' &rarr; <b>'+r.rms_out.toFixed(3)+'</b>' : ''}</span>`;
+  peakTable($('pin'), 'Original', r.peaks_in);
+  peakTable($('pout'), ft()==='none' ? 'Output (no filter)' : 'Filtered', r.peaks_out);
+}
+function aliasNote(){
+  const s = $('src').value, nyq = S.fs/2; let msg = '';
+  if (s === 'sine' && S.freqHz > nyq){
+    const a = Math.abs(S.freqHz - S.fs*Math.round(S.freqHz/S.fs));
+    msg = `Aliasing: ${S.freqHz.toFixed(0)} Hz is above the Nyquist frequency (${nyq.toFixed(0)} Hz), so it appears at ${a.toFixed(0)} Hz.`;
+  } else if (s === 'sine' || s === 'two_tone' || s === 'square' || s==='triangle' || s==='sawtooth'){
+    if (S.freqHz*(s==='two_tone'?2.6:1) > nyq) msg = 'Some components are above the Nyquist frequency and will alias to lower frequencies.';
+  }
+  $('alias').textContent = msg;
+}
+
+/* ---------- controls state ---------- */
+const ft = () => $('ft').value;
+function readSliders(){
+  S.fs = +$('fs').value; S.n = +$('n').value;
+  S.freqHz = logMap(+$('freq').value, 1, 2*S.fs);
+  $('freqv').textContent = fmtHz(S.freqHz).trim();
+  const nyq = S.fs/2, hi = nyq*0.98;
+  S.fcHz = Math.min(logMap(+$('fc').value, 10, hi), hi); $('fcv').textContent = fmtHz(S.fcHz).trim();
+  S.fc2Hz = Math.min(logMap(+$('fc2').value, 10, hi), hi); $('fc2v').textContent = fmtHz(S.fc2Hz).trim();
+  $('ordv').textContent = $('ord').value;
+  $('noisev').textContent = (+$('noise').value/50).toFixed(2);
+  $('wpmv').textContent = $('wpm').value;
+}
+function setSliderHz(id, hz){ const hi = S.fs/2*0.98; $(id).value = Math.round(Math.min(1000,Math.max(0,logInv(Math.min(hz,hi),10,hi)))); }
+function fixBand(){
+  const f = ft(); if (f !== 'bandpass' && f !== 'bandstop') return;
+  if (Math.abs(S.fc2Hz - S.fcHz) >= 0.01*Math.max(S.fcHz, S.fc2Hz)) return;
+  const hi = S.fs/2*0.98; let lo = Math.min(S.fcHz, S.fc2Hz), up = Math.min(hi, lo*1.6);
+  if (up < lo*1.05) { up = hi; lo = hi/1.6; }
+  setSliderHz('fc', lo); setSliderHz('fc2', up); readSliders();
+}
+function showHide(){
+  const s = $('src').value, f = ft();
+  $('freqw').hidden = !['sine','two_tone','square','triangle','sawtooth','chirp','am','morse'].includes(s);
+  $('noisew').hidden = s === 'draw' ? true : false;
+  $('textw').hidden = $('wpmw').hidden = s !== 'morse';
+  $('exprw').hidden = s !== 'expr'; $('drawrow').hidden = s !== 'draw';
+  $('fcw').hidden = f === 'none'; $('fc2w').hidden = !(f==='bandpass'||f==='bandstop'); $('ordw').hidden = f === 'none';
+  $('fcw').firstChild.textContent = (f==='bandpass'||f==='bandstop') ? 'Lower cutoff: ' : 'Cutoff: ';
+  $('lgf').style.display = $('lgf2').style.display = $('lgr').style.display = f === 'none' ? 'none' : '';
+  $('tc').style.cursor = s === 'draw' ? 'crosshair' : 'default';
+}
+
+/* ---------- signal construction ---------- */
+const FN = {sin:Math.sin,cos:Math.cos,tan:Math.tan,abs:Math.abs,sqrt:Math.sqrt,exp:Math.exp,log:Math.log,sign:Math.sign,floor:Math.floor,min:Math.min,max:Math.max,pow:Math.pow};
+const CONST = {pi:Math.PI, e:Math.E};
+function compileExpr(src){
+  const tokRe = /\s*(?:([A-Za-z_]\w*)|(\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?)|(\*\*|[-+*/^(),]))/y;
+  let i = 0, out = '';
+  while (i < src.length){
+    tokRe.lastIndex = i; const m = tokRe.exec(src);
+    if (!m){ if (/^\s*$/.test(src.slice(i))) break; throw new Error('Unexpected character: ' + src.slice(i).trim()[0]); }
+    i = tokRe.lastIndex;
+    if (m[1]){
+      if (m[1] === 't') out += 't'; else if (m[1] in CONST) out += CONST[m[1]]; else if (m[1] in FN) out += 'F.' + m[1];
+      else throw new Error('Unknown name: ' + m[1]);
+    } else if (m[2]) out += m[2]; else out += m[3] === '^' ? '**' : m[3];
+  }
+  if (!out.trim()) throw new Error('Type an expression.');
+  const f = new Function('F','t', '"use strict"; return (' + out + ');');
+  return t => f(FN, t);
+}
+async function buildSignal(){
+  const s = $('src').value;
+  if (s === 'draw'){
+    if (!S.drawn || S.drawn.length !== S.n) S.drawn = resample(S.x.length ? S.x : new Float64Array(S.n), S.n);
+    return Float64Array.from(S.drawn);
+  }
+  if (s === 'expr'){
+    const f = compileExpr($('expr').value), x = new Float64Array(S.n);
+    for (let i=0;i<S.n;i++){ const v = f(i/S.fs); if (!Number.isFinite(v)) throw new Error('The expression gives a non-finite value at t = ' + (i/S.fs).toFixed(4) + ' s.'); x[i] = v; }
+    const nz = +$('noise').value/50;
+    if (nz > 0){ let seed = 7; const rnd = () => (seed = (seed*16807) % 2147483647)/2147483647;
+      for (let i=0;i<S.n;i++){ x[i] += nz * Math.sqrt(-2*Math.log(rnd()+1e-12))*Math.cos(2*Math.PI*rnd()); } }
+    return x;
+  }
+  const q = new URLSearchParams({name:s, fs:S.fs, n:S.n, freq:S.freqHz, noise:(+$('noise').value/50), text:$('text').value, wpm:$('wpm').value});
+  const r = await fetch('/api/preset?' + q); const d = await r.json();
+  if (!r.ok) throw new Error(d.error || 'Could not generate the signal.');
+  return Float64Array.from(d.x);
+}
+function resample(a, n){
+  const out = new Float64Array(n); if (!a.length) return out;
+  for (let i=0;i<n;i++){ const p = i*(a.length-1)/Math.max(1,n-1), k = Math.floor(p), u = p-k; out[i] = a[k]*(1-u) + (a[Math.min(a.length-1,k+1)])*u; }
+  return out;
+}
+
+/* ---------- analysis ---------- */
+let timer = null, ctl = null, token = 0;
+function schedule(rebuild){ clearTimeout(timer); timer = setTimeout(() => run(rebuild), 120); }
+async function run(rebuild){
+  const my = ++token; $('err').textContent = ''; aliasNote();
+  try {
+    if (rebuild) S.x = await buildSignal();
+    if (my !== token) return;
+    const f = ft(), body = {x:Array.from(S.x), fs:S.fs, window:$('win').value, filter: f==='none' ? null : {type:f, fc: f==='bandpass'||f==='bandstop' ? Math.min(S.fcHz,S.fc2Hz) : S.fcHz, fc2: Math.max(S.fcHz,S.fc2Hz), order:+$('ord').value}};
+    if (ctl) ctl.abort(); ctl = new AbortController();
+    const r = await fetch('/api/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body), signal:ctl.signal});
+    const d = await r.json(); if (my !== token) return;
+    if (!r.ok) throw new Error(d.error || 'Analysis failed.');
+    S.res = d; updateInfo(); aliasNote(); redraw();
+  } catch (e){ if (e.name !== 'AbortError') $('err').textContent = e.message; }
+}
+function redraw(){ drawTime(); drawSpectrum(); drawSpectrogram(); }
+
+/* ---------- events ---------- */
+function onSource(){ showHide(); readSliders(); schedule(true); }
+['src','fs','n'].forEach(id => $(id).addEventListener('change', () => {
+  const keep = {f:S.freqHz, c:S.fcHz, c2:S.fc2Hz}; readSliders();
+  if (id === 'fs'){
+    $('freq').value = Math.round(Math.min(1000, logInv(Math.min(keep.f, 2*S.fs), 1, 2*S.fs)));
+    setSliderHz('fc', keep.c); setSliderHz('fc2', keep.c2); readSliders(); fixBand();
+  }
+  if (id === 'src'){
+    const v = $('src').value;
+    $('tv').value = ['morse','chirp','draw','am','expr'].includes(v) ? '0' : '20';
+    if (v === 'draw' && S.x.length) S.drawn = resample(S.x, S.n);
+  }
+  if (id === 'n' && S.drawn) S.drawn = resample(S.drawn, S.n);
+  showHide(); schedule(true);
+}));
+['freq','noise','wpm'].forEach(id => $(id).addEventListener('input', () => { readSliders(); schedule(true); }));
+['text','expr'].forEach(id => $(id).addEventListener('input', () => schedule(true)));
+['fc','fc2','ord'].forEach(id => $(id).addEventListener('input', () => { readSliders(); schedule(false); }));
+['win','ft'].forEach(id => $(id).addEventListener('change', () => { showHide(); fixBand(); schedule(false); }));
+$('axes').addEventListener('change', redraw);
+$('tv').addEventListener('change', redraw);
+window.addEventListener('resize', () => { if (S.res) redraw(); });
+new ResizeObserver(() => { if (S.res) redraw(); }).observe(document.querySelector('.plots'));
+
+/* hover: time plot */
+const tt = $('tt'), st = $('st'); let raf = 0;
+$('tc').addEventListener('pointermove', e => {
+  if (!S.x.length || drawing) return;
+  const r = e.currentTarget.getBoundingClientRect(), n = viewN();
+  const i = Math.round(Math.min(1,Math.max(0,(e.clientX-r.left-M.l)/(r.width-M.l-M.r)))*(n-1));
+  S.hoverT = i; cancelAnimationFrame(raf); raf = requestAnimationFrame(drawTime);
+  const y = S.res && ft()!=='none' ? `<br><span style="color:${C.a2}">Filtered</span> ${S.res.y[i].toFixed(3)}` : '';
+  tt.innerHTML = `${fmtT(i/S.fs)}<br><span style="color:${C.a1}">Original</span> ${S.x[i].toFixed(3)}${y}`;
+  tt.style.display = 'block'; tt.style.left = Math.min(r.width-150, e.clientX-r.left+12)+'px'; tt.style.top = '8px';
+});
+$('tc').addEventListener('pointerleave', () => { S.hoverT = null; tt.style.display='none'; drawTime(); });
+/* hover: spectrum */
+$('sc').addEventListener('pointermove', e => {
+  if (!S.res) return; const r = e.currentTarget.getBoundingClientRect(), G = spectrumGeom(r.width, r.height), fr = S.res.freqs;
+  const px = e.clientX - r.left; let best = 0, bd = 1e9;
+  for (let i = G.log?1:0; i < fr.length; i++){ const d = Math.abs(G.X(fr[i]) - px); if (d < bd){ bd = d; best = i; } }
+  S.hoverS = best; cancelAnimationFrame(raf); raf = requestAnimationFrame(drawSpectrum);
+  const a = S.res.amp_in[best], b = S.res.amp_out[best];
+  st.innerHTML = `${fr[best].toFixed(1)} Hz<br><span style="color:${C.a1}">Original</span> ${a.toFixed(4)} (${toDb(a).toFixed(1)} dB)` +
+    (S.res.response ? `<br><span style="color:${C.a2}">Filtered</span> ${b.toFixed(4)} (${toDb(b).toFixed(1)} dB)<br>|H| ${S.res.response[best].toFixed(3)}` : '');
+  st.style.display='block'; st.style.left = Math.min(r.width-210, px+12)+'px'; st.style.top = '8px';
+});
+$('sc').addEventListener('pointerleave', () => { S.hoverS = null; st.style.display='none'; drawSpectrum(); });
+
+/* drawing on the time plot */
+let drawing = false, lastI = -1;
+function penAt(e){
+  const cv = $('tc'), r = cv.getBoundingClientRect(), n = viewN(), ym = 1.2;
+  const i = Math.round(Math.min(1,Math.max(0,(e.clientX-r.left-M.l)/(r.width-M.l-M.r)))*(n-1));
+  const v = Math.max(-ym, Math.min(ym, ym*(1 - 2*(e.clientY-r.top-M.t)/(r.height-M.t-M.b))));
+  if (!S.drawn || S.drawn.length !== S.n) S.drawn = new Float64Array(S.n);
+  const a = lastI < 0 ? i : lastI, lo = Math.min(a,i), hi = Math.max(a,i);
+  const v0 = lastI < 0 ? v : S.drawn[a];
+  for (let k=lo;k<=hi;k++){ const u = hi===lo ? 1 : (k-a)/(i-a); S.drawn[k] = v0 + (v-v0)*Math.min(1,Math.max(0,u)); }
+  lastI = i; S.x = Float64Array.from(S.drawn); drawTime(); schedule(false);
+}
+$('tc').addEventListener('pointerdown', e => { if ($('src').value !== 'draw') return; drawing = true; lastI = -1; tt.style.display='none'; e.currentTarget.setPointerCapture(e.pointerId); penAt(e); });
+$('tc').addEventListener('pointermove', e => { if (drawing) penAt(e); });
+$('tc').addEventListener('pointerup', () => { drawing = false; lastI = -1; });
+$('clear').addEventListener('click', () => { S.drawn = new Float64Array(S.n); schedule(true); });
+$('keep').addEventListener('click', () => { if (S.x.length) { S.drawn = resample(S.x, S.n); schedule(true); } });
+
+/* audio */
+function stopAudio(){ if (S.audio){ try{ S.audio.close(); }catch(_){} S.audio = null; } $('playo').classList.remove('on'); $('playf').classList.remove('on'); }
+function play(arr, btn){
+  stopAudio(); if (!arr || !arr.length) return;
+  if (S.fs < 3000){ $('err').textContent = 'Browsers need a sample rate of at least 3000 Hz for playback.'; return; }
+  const ctx = new (window.AudioContext || window.webkitAudioContext)(); S.audio = ctx;
+  let mx = 0; for (const v of arr) mx = Math.max(mx, Math.abs(v));
+  const buf = ctx.createBuffer(1, arr.length, S.fs), d = buf.getChannelData(0);
+  const k = mx > 0 ? 0.5/mx : 0; const edge = Math.min(Math.floor(arr.length/10), Math.floor(S.fs*0.01));
+  for (let i=0;i<arr.length;i++){ let f = 1; if (i < edge) f = i/edge; else if (arr.length-1-i < edge) f = (arr.length-1-i)/edge; d[i] = arr[i]*k*f; }
+  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.start();
+  src.onended = () => { if (S.audio === ctx) stopAudio(); }; btn.classList.add('on');
+}
+$('playo').addEventListener('click', () => { if ($('playo').classList.contains('on')) stopAudio(); else play(S.x, $('playo')); });
+$('playf').addEventListener('click', () => { if ($('playf').classList.contains('on')) stopAudio(); else play(S.res && ft()!=='none' ? S.res.y : S.x, $('playf')); });
+
+/* keep the local server alive while the tab is open */
+if (location.protocol.startsWith('http')){
+  setInterval(() => fetch('/api/ping', {method:'POST'}).catch(()=>{}), 20000);
+  window.addEventListener('beforeunload', () => navigator.sendBeacon('/api/bye'));
+}
+
+/* start */
+$('freq').value = Math.round(logInv(500, 1, 16000));
+readSliders(); setSliderHz('fc', 900); setSliderHz('fc2', 1800); readSliders(); showHide(); run(true);
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.pytest_cache/
+build/
+dist/
+*.exe
+*.spec

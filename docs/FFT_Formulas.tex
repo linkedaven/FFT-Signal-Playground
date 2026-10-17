@@ -1,0 +1,137 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1.7cm,top=1.5cm,bottom=1.5cm]{geometry}
+\usepackage{amsmath,amssymb,booktabs,xcolor,titlesec,enumitem,array}
+\usepackage[T1]{fontenc}
+\definecolor{ac}{HTML}{1F5FBF}
+\definecolor{bx}{HTML}{F3F6FB}
+\titleformat{\section}{\large\bfseries\color{ac}}{\thesection}{0.6em}{}[\vspace{-0.55em}\color{ac}\rule{\linewidth}{0.5pt}]
+\titlespacing*{\section}{0pt}{9pt}{5pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+\setlist[itemize]{leftmargin=1.2em,itemsep=1pt,topsep=2pt}
+\renewcommand{\arraystretch}{1.18}
+\newcommand{\bin}{\Delta f}
+\pagestyle{empty}
+\begin{document}
+
+{\LARGE\bfseries\color{ac} FFT \& Signal Playground}\hfill{\large Formula sheet}\\[-2pt]
+{\small\color{gray} Every quantity below is the one computed by \texttt{signals.py}. Symbols: $f_s$ sample rate, $N$ number of samples, $x[n]$ signal, $w[n]$ window, $k$ frequency bin.}
+
+\section{Sampling}
+\begin{align*}
+T &= \frac{N}{f_s} \qquad
+\bin = \frac{f_s}{N} \qquad
+f_{\mathrm{Nyq}} = \frac{f_s}{2} \qquad
+f_k = k\,\bin \quad (k = 0,\dots,N/2)\\[2pt]
+f_{\mathrm{alias}} &= \bigl|\,f - f_s \,\mathrm{round}(f/f_s)\,\bigr| \qquad (\text{a tone with } f > f_{\mathrm{Nyq}} \text{ appears at } f_{\mathrm{alias}})
+\end{align*}
+Resolving two tones needs a separation of at least about the main-lobe width of the window: $|f_2 - f_1| \gtrsim 2\bin$ for a Hann window. Finer resolution needs a longer record (larger $N$), not a higher $f_s$.
+
+\section{Discrete Fourier transform}
+\begin{align*}
+X[k] &= \sum_{n=0}^{N-1} x[n]\,e^{-j 2\pi k n/N}
+\qquad\qquad
+x[n] = \frac{1}{N}\sum_{k=0}^{N-1} X[k]\,e^{\,j 2\pi k n/N}\\
+\sum_{n} |x[n]|^2 &= \frac{1}{N}\sum_{k} |X[k]|^2 \quad(\text{Parseval})
+\qquad
+X[N-k] = X[k]^{*}\ \text{for real } x
+\end{align*}
+The real-input FFT keeps only $k = 0,\dots,N/2$. An FFT costs $O(N\log N)$ operations against $O(N^2)$ for the direct sum.
+
+\section{Windowing and amplitude scaling}
+The spectrum of the windowed signal is the true spectrum convolved with the window's transform. Define the \emph{coherent gain}
+\[
+\mathrm{CG} = \frac{1}{N}\sum_{n} w[n]
+\qquad\Longrightarrow\qquad
+A_k = \frac{2\,|X_w[k]|}{N\cdot\mathrm{CG}} \quad (1 \le k < N/2)
+\]
+so a sine of amplitude $A$ on a bin centre reads exactly $A$ for every window. The DC and Nyquist bins are not doubled. Levels in the plots are
+$20\log_{10}A_k$ (dB re amplitude 1). The equivalent noise bandwidth is
+\[
+\mathrm{ENBW} = N\,\frac{\sum_n w[n]^2}{\bigl(\sum_n w[n]\bigr)^2}\ \text{bins}
+\]
+
+\begin{center}
+\begin{tabular}{@{}l l c c c c c@{}}
+\toprule
+Window & $w[n]$ for $0 \le n < N$ & CG & ENBW & Null at & Peak sidelobe & Worst scallop\\
+\midrule
+Rectangular & $1$ & 1.000 & 1.00 & $\pm 1$ bin & $-13.3$ dB & $-3.90$ dB\\
+Hann & $0.5 - 0.5\cos\frac{2\pi n}{N}$ & 0.500 & 1.50 & $\pm 2$ bins & $-31.5$ dB & $-1.42$ dB\\
+Hamming & $0.54 - 0.46\cos\frac{2\pi n}{N}$ & 0.540 & 1.36 & $\pm 2$ bins & $-42.7$ dB & $-1.75$ dB\\
+Blackman & $0.42 - 0.5\cos\frac{2\pi n}{N} + 0.08\cos\frac{4\pi n}{N}$ & 0.420 & 1.73 & $\pm 3$ bins & $-58.1$ dB & $-1.10$ dB\\
+\bottomrule
+\end{tabular}
+\end{center}
+\emph{Scalloping} is the amplitude error when a tone falls halfway between two bins (last column). A narrower main lobe (rectangular) gives the best resolution but the worst leakage. A wider lobe (Blackman) hides weak tones next to strong ones.
+
+\section{Peak frequency by parabolic interpolation}
+With the largest bin $k$ and its neighbours $\alpha = A_{k-1}$ and $\beta = A_k$ and $\gamma = A_{k+1}$:
+\[
+\delta = \frac{1}{2}\,\frac{\alpha - \gamma}{\alpha - 2\beta + \gamma}
+\qquad
+f_{\mathrm{peak}} = (k + \delta)\,\bin
+\qquad
+A_{\mathrm{peak}} \approx \beta - \tfrac{1}{4}(\alpha - \gamma)\,\delta
+\qquad (-\tfrac12 \le \delta \le \tfrac12)
+\]
+This locates a tone to a small fraction of a bin (about $0.1$ Hz in the app at $\bin \approx 2$ Hz).
+
+\clearpage
+\section{Filters}
+Magnitude responses used in the app ($n$ is the filter order $f_c$ the cutoff):
+\begin{align*}
+|H_{\mathrm{LP}}(f)| &= \frac{1}{\sqrt{1 + (f/f_c)^{2n}}}
+\qquad\quad
+|H_{\mathrm{HP}}(f)| = \frac{1}{\sqrt{1 + (f_c/f)^{2n}}}\\[2pt]
+|H_{\mathrm{BP}}(f)| &= \frac{1}{\sqrt{1 + u^{2n}}}
+\qquad
+|H_{\mathrm{BS}}(f)| = \frac{1}{\sqrt{1 + u^{-2n}}}
+\qquad
+u = \frac{f^2 - f_0^2}{f\,B}
+\quad f_0 = \sqrt{f_1 f_2}\quad B = f_2 - f_1
+\end{align*}
+\begin{itemize}
+\item $|H| = 1/\sqrt{2}$ ($-3$ dB) at every cutoff. The roll-off is $20n$ dB per decade ($6n$ dB per octave).
+\item The filter is applied as $Y[k] = H(f_k)\,X[k]$ on a copy zero-padded to the next power of two $\ge 2N$, then cropped back to $N$ samples. Because $H$ is real the output has \textbf{zero phase shift}, and the padding keeps circular wrap-around out of the result.
+\item Convolution in time is multiplication in frequency: $\;y = x * h \;\Longleftrightarrow\; Y = X\,H$.
+\end{itemize}
+
+\section{Spectrogram (short-time Fourier transform)}
+\[
+S[m,k] = \sum_{n=0}^{L-1} x[n + mH]\,w[n]\,e^{-j2\pi kn/L}
+\qquad
+\mathrm{level}[m,k] = 20\log_{10}\frac{|S[m,k]|}{\sum_n w[n]/2}
+\]
+with a Hann window of length $L \le 256$ and hop $H = L/4$. Frequency resolution is $f_s/L$ and time resolution is about $L/f_s$, so their product is fixed: a longer window sharpens frequency and blurs time. Values are clipped at $-80$ dB.
+
+\section{Useful theorems and pairs}
+\begin{center}
+\begin{tabular}{@{}l l@{\qquad}l l@{}}
+\toprule
+Property & Statement & Pair & Transform\\
+\midrule
+Linearity & $ax + by \leftrightarrow aX + bY$ & Rectangle (width $T$) & $T\,\mathrm{sinc}(fT)$\\
+Time shift & $x[n-n_0] \leftrightarrow X[k]\,e^{-j2\pi kn_0/N}$ & Gaussian & Gaussian\\
+Modulation & $x[n]\,e^{j2\pi k_0 n/N} \leftrightarrow X[k-k_0]$ & Impulse train & Impulse train\\
+Multiplication & $xy \leftrightarrow X * Y\,/\,N$ & Pure sine & two spectral lines\\
+\bottomrule
+\end{tabular}
+\end{center}
+The \emph{Morse code} preset is a keyed carrier $m(t)\sin(2\pi f_0 t)$. By the modulation theorem its spectrum is the spectrum of the on/off envelope $m(t)$ shifted to $\pm f_0$. Faster keying makes $m(t)$ change faster, so the sidebands spread wider around the carrier. The 5 ms raised-cosine edges used in the app make the sidebands fall off much faster than hard on/off keying, which is what removes key clicks.
+
+\section{Worked example}
+For $f_s = 8000$ Hz and $N = 4096$:
+\[
+T = 0.512\ \mathrm{s}
+\qquad
+\bin = 1.953\ \mathrm{Hz}
+\qquad
+f_{\mathrm{Nyq}} = 4000\ \mathrm{Hz}
+\qquad
+\text{a 5 kHz tone aliases to } |5000 - 8000| = 3000\ \mathrm{Hz}
+\]
+A 4th-order low-pass at $f_c = 900$ Hz passes a 500 Hz tone with
+$|H| = \bigl(1 + (500/900)^8\bigr)^{-1/2} \approx 0.995$ and a 1300 Hz tone with $|H| = \bigl(1 + (1300/900)^8\bigr)^{-1/2} \approx 0.224$.
+
+\end{document}
